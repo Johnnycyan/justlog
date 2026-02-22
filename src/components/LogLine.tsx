@@ -1,7 +1,9 @@
 import dayjs from "dayjs";
 import React, { useContext } from "react";
 import styled from "styled-components";
+import { useChannels } from "../hooks/useChannels";
 import { useThirdPartyEmotes } from "../hooks/useThirdPartyEmotes";
+import { useChannelColor } from "../hooks/useChannelColor";
 import { store } from "../store";
 import { LogMessage } from "../types/log";
 import { Message } from "./Message";
@@ -40,19 +42,63 @@ const LogLineContainer = styled.li`
 
   .channel {
     margin-right: 5px;
-    color: var(--text-dark);
-    font-family: monospace;
-    font-size: 0.9em;
+    font-weight: bold;
     user-select: none;
   }
 `;
 
+const TWITCH_COLORS = [
+  "#FF0000",
+  "#0000FF",
+  "#008000",
+  "#B22222",
+  "#FF7F50",
+  "#9ACD32",
+  "#FF4500",
+  "#2E8B57",
+  "#DAA520",
+  "#D2691E",
+  "#5F9EA0",
+  "#1E90FF",
+  "#FF69B4",
+  "#8A2BE2",
+  "#00FF7F",
+];
+
+function getChannelColor(name: string) {
+  if (!name) return "grey";
+  let n = name.charCodeAt(0) + name.charCodeAt(name.length - 1);
+  return TWITCH_COLORS[n % TWITCH_COLORS.length];
+}
+
+const ChannelSpan = styled.span.attrs((props: { color: string }) => ({
+  style: {
+    color: props.color,
+  },
+}))<{ color?: string }>`
+  display: inline;
+`;
+
 export function LogLine({ message }: { message: LogMessage }) {
   const { state } = useContext(store);
+  const channels = useChannels();
   const showChannel = !state.currentChannel && message.tags["room-id"];
 
+  const channelInfo = showChannel
+    ? channels.find((c) => c.userID === message.tags["room-id"])
+    : null;
+  const channelName = channelInfo ? channelInfo.name : message.tags["room-id"];
+
+  const genuineColor = useChannelColor(showChannel ? channelName : undefined);
+
   if (state.settings.showEmotes.value) {
-    return <LogLineWithEmotes message={message} showChannel={showChannel} />;
+    return (
+      <LogLineWithEmotes
+        message={message}
+        showChannel={showChannel}
+        genuineColor={genuineColor}
+      />
+    );
   }
 
   return (
@@ -63,7 +109,13 @@ export function LogLine({ message }: { message: LogMessage }) {
         </span>
       )}
       {showChannel && (
-        <span className="channel"> #{message.tags["room-id"]}</span>
+        <span className="channel">
+          {" "}
+          <ChannelSpan color={genuineColor || getChannelColor(channelName)}>
+            {channelName}
+          </ChannelSpan>
+          {" ->"}
+        </span>
       )}
       {state.settings.showName.value && (
         <User displayName={message.displayName} color={message.tags["color"]} />
@@ -76,12 +128,23 @@ export function LogLine({ message }: { message: LogMessage }) {
 export function LogLineWithEmotes({
   message,
   showChannel,
+  genuineColor,
 }: {
   message: LogMessage;
-  showChannel: string | false;
+  showChannel: string | false | undefined;
+  genuineColor?: string | undefined;
 }) {
-  const thirdPartyEmotes = useThirdPartyEmotes(message.tags["room-id"]);
   const { state } = useContext(store);
+  const channels = useChannels();
+  const thirdPartyEmotes = useThirdPartyEmotes(message.tags["room-id"]);
+
+  const channelInfo = showChannel
+    ? channels.find((c) => c.userID === message.tags["room-id"])
+    : null;
+  const channelName = channelInfo ? channelInfo.name : message.tags["room-id"];
+
+  const resolvedColor =
+    genuineColor ?? useChannelColor(showChannel ? channelName : undefined);
 
   return (
     <LogLineContainer className="logLine">
@@ -91,7 +154,13 @@ export function LogLineWithEmotes({
         </span>
       )}
       {showChannel && (
-        <span className="channel"> #{message.tags["room-id"]}</span>
+        <span className="channel">
+          {" "}
+          <ChannelSpan color={resolvedColor || getChannelColor(channelName)}>
+            {channelName}
+          </ChannelSpan>
+          {" ->"}
+        </span>
       )}
       {state.settings.showName.value && (
         <User displayName={message.displayName} color={message.tags["color"]} />

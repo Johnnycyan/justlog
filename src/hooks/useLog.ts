@@ -22,17 +22,20 @@ export function useLog(
 
         let queryUrlStr = `${state.apiBaseUrl}`;
 
-        if (channel) {
+        if (channel && !username) {
           const ch = channelIsId ? getUserId(channel) : channel;
-          queryUrlStr += `/channel${channelIsId ? "id" : ""}/${ch}`;
+          queryUrlStr += `/global/channels/${channelIsId ? "channelid" : "channel"}/${ch}`;
+        } else if (channel && username) {
+          const ch = channelIsId ? getUserId(channel) : channel;
+          queryUrlStr += `/${channelIsId ? "channelid" : "channel"}/${ch}`;
         }
 
         if (username && !channel) {
           const us = usernameIsId ? getUserId(username) : username;
-          queryUrlStr += `/global/user${usernameIsId ? "id" : ""}/${us}`;
+          queryUrlStr += `/global/users/${usernameIsId ? "userid" : "user"}/${us}`;
         } else if (username && channel) {
           const us = usernameIsId ? getUserId(username) : username;
-          queryUrlStr += `/user${usernameIsId ? "id" : ""}/${us}`;
+          queryUrlStr += `/${usernameIsId ? "userid" : "user"}/${us}`;
         }
 
         queryUrlStr += `/${year}/${month}`;

@@ -4,49 +4,66 @@ import { OptOutError } from "../errors/OptOutError";
 import { getUserId, isUserId } from "../services/isUserId";
 import { store } from "../store";
 
-export type AvailableLogs = Array<{ month: string, year: string }>;
+export type AvailableLogs = Array<{ month: string; year: string }>;
 
-export function useAvailableLogs(channel: string | null, username: string | null): [AvailableLogs, Error | undefined] {
-    const { state, setState } = useContext(store);
+export function useAvailableLogs(
+  channel: string | null,
+  username: string | null,
+): [AvailableLogs, Error | undefined] {
+  const { state, setState } = useContext(store);
 
-    // @ts-ignore I don't understand this error :)
-    const { data } = useQuery<[AvailableLogs, Error | undefined]>(["availableLogs", { channel: channel, username: username }], () => {
-        if (!channel || !username) {
-            return Promise.resolve([[], undefined]);
-        }
+  // @ts-ignore I don't understand this error :)
+  const { data } = useQuery<[AvailableLogs, Error | undefined]>(
+    ["availableLogs", { channel: channel, username: username }],
+    () => {
+      if (!channel && !username) {
+        return Promise.resolve([[], undefined]);
+      }
 
-        const channelIsId = isUserId(channel);
-        const usernameIsId = isUserId(username);
+      const channelIsId = channel ? isUserId(channel) : false;
+      const usernameIsId = username ? isUserId(username) : false;
 
-        if (channelIsId) {
-            channel = getUserId(channel)
-        }
-        if (usernameIsId) {
-            username = getUserId(username)
-        }
+      const queryUrl = new URL(`${state.apiBaseUrl}/list`);
 
-        const queryUrl = new URL(`${state.apiBaseUrl}/list`);
-        queryUrl.searchParams.append(`channel${channelIsId ? "id" : ""}`, channel);
-        queryUrl.searchParams.append(`user${usernameIsId ? "id" : ""}`, username);
+      if (channel) {
+        let ch = channel;
+        if (channelIsId) ch = getUserId(ch);
+        queryUrl.searchParams.append(`channel${channelIsId ? "id" : ""}`, ch);
+      }
 
-        return fetch(queryUrl.toString()).then((response) => {
-            if (response.ok) {
-                return response;
-            }
+      if (username) {
+        let us = username;
+        if (usernameIsId) us = getUserId(us);
+        queryUrl.searchParams.append(`user${usernameIsId ? "id" : ""}`, us);
+      }
 
-            setState({ ...state, error: true });
+      return fetch(queryUrl.toString())
+        .then((response) => {
+          if (response.ok) {
+            return response;
+          }
 
-            if (response.status === 403) {
-                throw new OptOutError();
-            }
+          setState({ ...state, error: true });
 
-            throw Error(response.statusText);
-        }).then(response => response.json())
-            .then((data: { availableLogs: AvailableLogs }) => [data.availableLogs, undefined])
-            .catch((err) => {
-                return [[], err];
-            });        
-    }, { refetchOnWindowFocus: false, refetchOnReconnect: false });
+          if (response.status === 403) {
+            throw new OptOutError();
+          }
 
-    return data as [AvailableLogs, Error | undefined] | undefined ?? [[], undefined];
+          throw Error(response.statusText);
+        })
+        .then((response) => response.json())
+        .then((data: { availableLogs: AvailableLogs }) => [
+          data.availableLogs,
+          undefined,
+        ])
+        .catch((err) => {
+          return [[], err];
+        });
+    },
+    { refetchOnWindowFocus: false, refetchOnReconnect: false },
+  );
+
+  return (
+    (data as [AvailableLogs, Error | undefined] | undefined) ?? [[], undefined]
+  );
 }

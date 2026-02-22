@@ -41,7 +41,7 @@ const LogLineContainer = styled.li`
   }
 
   .channel {
-    margin-right: 5px;
+    margin-left: 5px;
     font-weight: bold;
     user-select: none;
   }
@@ -114,7 +114,7 @@ export function LogLine({ message }: { message: LogMessage }) {
           <ChannelSpan color={genuineColor || getChannelColor(channelName)}>
             {channelName}
           </ChannelSpan>
-          {" ->"}
+          {" ►"}
         </span>
       )}
       {state.settings.showName.value && (
@@ -159,7 +159,7 @@ export function LogLineWithEmotes({
           <ChannelSpan color={resolvedColor || getChannelColor(channelName)}>
             {channelName}
           </ChannelSpan>
-          {" ->"}
+          {" ►"}
         </span>
       )}
       {state.settings.showName.value && (

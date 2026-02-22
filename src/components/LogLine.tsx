@@ -143,8 +143,8 @@ export function LogLineWithEmotes({
     : null;
   const channelName = channelInfo ? channelInfo.name : message.tags["room-id"];
 
-  const resolvedColor =
-    genuineColor ?? useChannelColor(showChannel ? channelName : undefined);
+  const fetchedColor = useChannelColor(showChannel ? channelName : undefined);
+  const resolvedColor = genuineColor ?? fetchedColor;
 
   return (
     <LogLineContainer className="logLine">

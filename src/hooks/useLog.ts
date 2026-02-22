@@ -27,7 +27,10 @@ export function useLog(
           queryUrlStr += `/channel${channelIsId ? "id" : ""}/${ch}`;
         }
 
-        if (username) {
+        if (username && !channel) {
+          const us = usernameIsId ? getUserId(username) : username;
+          queryUrlStr += `/global/user${usernameIsId ? "id" : ""}/${us}`;
+        } else if (username && channel) {
           const us = usernameIsId ? getUserId(username) : username;
           queryUrlStr += `/user${usernameIsId ? "id" : ""}/${us}`;
         }

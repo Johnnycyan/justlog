@@ -30,6 +30,8 @@ export interface State {
   currentChannel: string | null;
   currentUsername: string | null;
   currentSearchQuery: string | null;
+  timeFrom: string | null;
+  timeTo: string | null;
   error: boolean;
   activeSearchField: HTMLInputElement | null;
   showOptout: boolean;
@@ -69,6 +71,8 @@ const defaultContext = {
     currentChannel: url.searchParams.get("channel"),
     currentUsername: url.searchParams.get("username"),
     currentSearchQuery: url.searchParams.get("search"),
+    timeFrom: url.searchParams.get("from"),
+    timeTo: url.searchParams.get("to"),
     showOptout: url.searchParams.has("optout"),
     error: false,
   } as State,
@@ -77,6 +81,8 @@ const defaultContext = {
     currentChannel: string | null = null,
     currentUsername: string | null = null,
     currentSearchQuery: string | null = null,
+    timeFrom: string | null = null,
+    timeTo: string | null = null,
   ) => {},
   setSettings: (newSettings: Settings) => {},
   setShowOptout: (show: boolean) => {},
@@ -131,16 +137,22 @@ const StateProvider = ({
     currentChannel: string | null = null,
     currentUsername: string | null = null,
     currentSearchQuery: string | null = null,
+    timeFrom: string | null = null,
+    timeTo: string | null = null,
   ) => {
     currentChannel = currentChannel?.toLowerCase().trim() ?? null;
     currentUsername = currentUsername?.toLowerCase().trim() ?? null;
     currentSearchQuery = currentSearchQuery?.trim() ?? null;
+    timeFrom = timeFrom?.trim() ?? null;
+    timeTo = timeTo?.trim() ?? null;
 
     setState({
       ...state,
       currentChannel,
       currentUsername,
       currentSearchQuery,
+      timeFrom,
+      timeTo,
       error: false,
     });
 
@@ -162,6 +174,18 @@ const StateProvider = ({
       url.searchParams.set("search", currentSearchQuery);
     } else {
       url.searchParams.delete("search");
+    }
+
+    if (timeFrom) {
+      url.searchParams.set("from", timeFrom);
+    } else {
+      url.searchParams.delete("from");
+    }
+
+    if (timeTo) {
+      url.searchParams.set("to", timeTo);
+    } else {
+      url.searchParams.delete("to");
     }
 
     window.history.replaceState({}, "justlog", url.toString());

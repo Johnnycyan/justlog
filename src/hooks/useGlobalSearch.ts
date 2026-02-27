@@ -9,7 +9,7 @@ export function useGlobalSearch(query: string): [Array<LogMessage>, boolean] {
   const { state } = useContext(store);
 
   const { data, isFetching } = useQuery<Array<LogMessage>>(
-    ["search", { query: query }],
+    ["search", { query: query, from: state.timeFrom, to: state.timeTo }],
     () => {
       if (!query) {
         return Promise.resolve([]);
@@ -21,6 +21,13 @@ export function useGlobalSearch(query: string): [Array<LogMessage>, boolean] {
 
       if (!state.settings.newOnBottom.value) {
         queryUrl.searchParams.append("reverse", "1");
+      }
+
+      if (state.timeFrom) {
+        queryUrl.searchParams.append("from", state.timeFrom);
+      }
+      if (state.timeTo) {
+        queryUrl.searchParams.append("to", state.timeTo);
       }
 
       return fetch(queryUrl.toString())

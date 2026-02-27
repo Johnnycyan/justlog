@@ -12,6 +12,16 @@ export function useAvailableLogs(
 ): [AvailableLogs, Error | undefined] {
   const { state, setState } = useContext(store);
 
+  // When time range is active, return a synthetic entry so LogContainer renders
+  if (state.timeFrom && state.timeTo) {
+    const fromDate = new Date(state.timeFrom);
+    const syntheticEntry = {
+      year: fromDate.getFullYear().toString(),
+      month: (fromDate.getMonth() + 1).toString(),
+    };
+    return [[syntheticEntry], undefined];
+  }
+
   // @ts-ignore I don't understand this error :)
   const { data } = useQuery<[AvailableLogs, Error | undefined]>(
     ["availableLogs", { channel: channel, username: username }],

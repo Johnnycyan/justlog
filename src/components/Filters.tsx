@@ -18,6 +18,8 @@ const FiltersContainer = styled.form`
   border-bottom-right-radius: 3px;
   margin: 0 auto;
   z-index: 99;
+  flex-wrap: wrap;
+  gap: 8px;
 
   > * {
     margin-right: 15px !important;
@@ -30,6 +32,19 @@ const FiltersContainer = styled.form`
 
 const FiltersWrapper = styled.div`
   text-align: center;
+`;
+
+const TimeRangeContainer = styled.div`
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+
+  .time-label {
+    color: rgba(255, 255, 255, 0.5);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
 `;
 
 export function Filters() {
@@ -46,6 +61,12 @@ export function Filters() {
       const channel = data.get("channel") as string | null;
       const username = data.get("username") as string | null;
       const search = data.get("search") as string | null;
+      const fromValue = data.get("from") as string | null;
+      const toValue = data.get("to") as string | null;
+
+      // Convert datetime-local values to ISO strings
+      const timeFrom = fromValue ? new Date(fromValue).toISOString() : null;
+      const timeTo = toValue ? new Date(toValue).toISOString() : null;
 
       queryClient.invalidateQueries([
         "log",
@@ -55,7 +76,20 @@ export function Filters() {
         queryClient.invalidateQueries(["search", { query: search }]);
       }
 
-      setCurrents(channel, username, search);
+      setCurrents(channel, username, search, timeFrom, timeTo);
+    }
+  };
+
+  // Convert ISO strings back to datetime-local format for input defaults
+  const formatForInput = (isoString: string | null): string => {
+    if (!isoString) return "";
+    try {
+      const date = new Date(isoString);
+      // Format as YYYY-MM-DDTHH:MM for datetime-local input
+      const pad = (n: number) => n.toString().padStart(2, "0");
+      return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+    } catch {
+      return "";
     }
   };
 
@@ -97,6 +131,28 @@ export function Filters() {
           autoComplete="off"
           defaultValue={state.currentSearchQuery}
         />
+        <TimeRangeContainer>
+          <TextField
+            name="from"
+            label="From"
+            type="datetime-local"
+            variant="filled"
+            size="small"
+            defaultValue={formatForInput(state.timeFrom)}
+            InputLabelProps={{ shrink: true }}
+            style={{ width: 200 }}
+          />
+          <TextField
+            name="to"
+            label="To"
+            type="datetime-local"
+            variant="filled"
+            size="small"
+            defaultValue={formatForInput(state.timeTo)}
+            InputLabelProps={{ shrink: true }}
+            style={{ width: 200 }}
+          />
+        </TimeRangeContainer>
         <Button variant="contained" color="primary" size="large" type="submit">
           load
         </Button>

@@ -14,7 +14,17 @@ export function useLog(
   const { state } = useContext(store);
 
   const { data } = useQuery<Array<LogMessage>>(
-    ["log", { channel: channel, username: username, year: year, month: month }],
+    [
+      "log",
+      {
+        channel: channel,
+        username: username,
+        year: year,
+        month: month,
+        from: state.timeFrom,
+        to: state.timeTo,
+      },
+    ],
     () => {
       if (channel || username) {
         const channelIsId = channel ? isUserId(channel) : false;
@@ -38,11 +48,23 @@ export function useLog(
           queryUrlStr += `/${usernameIsId ? "userid" : "user"}/${us}`;
         }
 
-        queryUrlStr += `/${year}/${month}`;
+        // If time range is set, use range query params instead of year/month path
+        if (state.timeFrom && state.timeTo) {
+          // Don't append year/month path, use from/to params instead
+        } else {
+          queryUrlStr += `/${year}/${month}`;
+        }
         const queryUrl = new URL(queryUrlStr);
         queryUrl.searchParams.append("jsonBasic", "1");
         if (!state.settings.newOnBottom.value) {
           queryUrl.searchParams.append("reverse", "1");
+        }
+
+        if (state.timeFrom) {
+          queryUrl.searchParams.append("from", state.timeFrom);
+        }
+        if (state.timeTo) {
+          queryUrl.searchParams.append("to", state.timeTo);
         }
 
         return fetch(queryUrl.toString())

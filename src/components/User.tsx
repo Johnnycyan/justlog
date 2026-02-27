@@ -1,4 +1,4 @@
-import React, { useState, useRef } from "react";
+import React, { useState } from "react";
 import styled from "styled-components";
 import { LogMessage } from "../types/log";
 import { UserCard } from "./UserCard";
@@ -26,24 +26,20 @@ export function User({
   message?: LogMessage;
 }): JSX.Element {
   const [showCard, setShowCard] = useState(false);
-  const userRef = useRef<HTMLDivElement>(null);
+  const [clickPos, setClickPos] = useState({ x: 0, y: 0 });
   const renderColor = color !== "" ? color : "grey";
 
   const handleClick = (e: React.MouseEvent) => {
     e.stopPropagation();
     if (message) {
+      setClickPos({ x: e.clientX, y: e.clientY });
       setShowCard(true);
     }
   };
 
   return (
     <>
-      <UserContainer
-        ref={userRef}
-        color={renderColor}
-        className="user"
-        onClick={handleClick}
-      >
+      <UserContainer color={renderColor} className="user" onClick={handleClick}>
         {displayName}:
       </UserContainer>
       {showCard && message && (
@@ -52,7 +48,8 @@ export function User({
           displayName={displayName}
           lastTimestamp={message.timestamp}
           lastChannelId={message.tags["room-id"] || ""}
-          anchorEl={userRef.current}
+          clickX={clickPos.x}
+          clickY={clickPos.y}
           onClose={() => setShowCard(false)}
         />
       )}

@@ -5,7 +5,8 @@ import { store } from "../store";
 interface ChannelCardProps {
   channelName: string;
   channelId: string;
-  anchorEl: HTMLElement | null;
+  clickX: number;
+  clickY: number;
   onClose: () => void;
 }
 
@@ -115,7 +116,8 @@ const CardContainer = styled.div`
 export function ChannelCard({
   channelName,
   channelId,
-  anchorEl,
+  clickX,
+  clickY,
   onClose,
 }: ChannelCardProps) {
   const { setCurrents } = useContext(store);
@@ -154,25 +156,23 @@ export function ChannelCard({
   });
 
   useEffect(() => {
-    if (anchorEl) {
-      const rect = anchorEl.getBoundingClientRect();
-      const cardWidth = 280;
-      const cardHeight = 240;
+    const cardWidth = 280;
+    const cardHeight = 240;
 
-      let top = rect.bottom + 4;
-      let left = rect.left;
+    let top = clickY + 8;
+    let left = clickX;
 
-      if (left + cardWidth > window.innerWidth) {
-        left = window.innerWidth - cardWidth - 16;
-      }
-      if (top + cardHeight > window.innerHeight) {
-        top = rect.top - cardHeight - 4;
-        if (top < 0) top = 8;
-      }
-
-      setPosition({ top, left });
+    if (left + cardWidth > window.innerWidth) {
+      left = window.innerWidth - cardWidth - 16;
     }
-  }, [anchorEl]);
+    if (left < 8) left = 8;
+    if (top + cardHeight > window.innerHeight) {
+      top = clickY - cardHeight - 8;
+      if (top < 0) top = 8;
+    }
+
+    setPosition({ top, left });
+  }, [clickX, clickY]);
 
   const copyToClipboard = (text: string, field: string) => {
     navigator.clipboard.writeText(text).then(() => {

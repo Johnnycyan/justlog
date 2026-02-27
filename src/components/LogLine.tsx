@@ -1,5 +1,5 @@
 import dayjs from "dayjs";
-import React, { useContext, useState, useRef } from "react";
+import React, { useContext, useState } from "react";
 import styled from "styled-components";
 import { useChannels } from "../hooks/useChannels";
 import { useThirdPartyEmotes } from "../hooks/useThirdPartyEmotes";
@@ -113,17 +113,17 @@ function ClickableChannel({
   color: string;
 }) {
   const [showCard, setShowCard] = useState(false);
-  const channelRef = useRef<HTMLSpanElement>(null);
+  const [clickPos, setClickPos] = useState({ x: 0, y: 0 });
 
   return (
     <span className="channel">
       {" "}
       <ChannelSpan
-        ref={channelRef}
         className="channel-clickable"
         color={color}
         onClick={(e: React.MouseEvent) => {
           e.stopPropagation();
+          setClickPos({ x: e.clientX, y: e.clientY });
           setShowCard(true);
         }}
       >
@@ -134,7 +134,8 @@ function ClickableChannel({
         <ChannelCard
           channelName={channelName}
           channelId={channelId}
-          anchorEl={channelRef.current}
+          clickX={clickPos.x}
+          clickY={clickPos.y}
           onClose={() => setShowCard(false)}
         />
       )}

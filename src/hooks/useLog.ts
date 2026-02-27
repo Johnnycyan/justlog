@@ -32,9 +32,16 @@ export function useLog(
 
         let queryUrlStr = `${state.apiBaseUrl}`;
 
+        const hasTimeRange = state.timeFrom && state.timeTo;
+
         if (channel && !username) {
           const ch = channelIsId ? getUserId(channel) : channel;
-          queryUrlStr += `/global/channels/${channelIsId ? "channelid" : "channel"}/${ch}`;
+          if (hasTimeRange) {
+            // Use /{channel_id_type}/{channel} which supports from/to range params
+            queryUrlStr += `/${channelIsId ? "channelid" : "channel"}/${ch}`;
+          } else {
+            queryUrlStr += `/global/channels/${channelIsId ? "channelid" : "channel"}/${ch}`;
+          }
         } else if (channel && username) {
           const ch = channelIsId ? getUserId(channel) : channel;
           queryUrlStr += `/${channelIsId ? "channelid" : "channel"}/${ch}`;
@@ -42,14 +49,19 @@ export function useLog(
 
         if (username && !channel) {
           const us = usernameIsId ? getUserId(username) : username;
-          queryUrlStr += `/global/users/${usernameIsId ? "userid" : "user"}/${us}`;
+          if (hasTimeRange) {
+            // Use /global/users/{user_id_type}/{user}/all which returns all logs
+            queryUrlStr += `/global/users/${usernameIsId ? "userid" : "user"}/${us}/all`;
+          } else {
+            queryUrlStr += `/global/users/${usernameIsId ? "userid" : "user"}/${us}`;
+          }
         } else if (username && channel) {
           const us = usernameIsId ? getUserId(username) : username;
           queryUrlStr += `/${usernameIsId ? "userid" : "user"}/${us}`;
         }
 
         // If time range is set, use range query params instead of year/month path
-        if (state.timeFrom && state.timeTo) {
+        if (hasTimeRange) {
           // Don't append year/month path, use from/to params instead
         } else {
           queryUrlStr += `/${year}/${month}`;

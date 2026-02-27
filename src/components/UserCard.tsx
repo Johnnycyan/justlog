@@ -9,7 +9,8 @@ interface UserCardProps {
   displayName: string;
   lastTimestamp: Date;
   lastChannelId: string;
-  anchorEl: HTMLElement | null;
+  clickX: number;
+  clickY: number;
   onClose: () => void;
 }
 
@@ -17,11 +18,6 @@ interface PreviousName {
   user_login: string;
   last_timestamp: string;
   first_timestamp: string;
-}
-
-interface TwitchUserInfo {
-  displayName: string;
-  logo: string;
 }
 
 const Overlay = styled.div`
@@ -66,6 +62,11 @@ const CardContainer = styled.div`
   .card-name {
     font-size: 16px;
     font-weight: bold;
+  }
+
+  .card-subname {
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.5);
   }
 
   .card-row {
@@ -162,7 +163,8 @@ export function UserCard({
   displayName,
   lastTimestamp,
   lastChannelId,
-  anchorEl,
+  clickX,
+  clickY,
   onClose,
 }: UserCardProps) {
   const { state, setCurrents } = useContext(store);
@@ -170,6 +172,7 @@ export function UserCard({
   const cardRef = useRef<HTMLDivElement>(null);
   const [nameHistory, setNameHistory] = useState<PreviousName[]>([]);
   const [profilePic, setProfilePic] = useState<string>("");
+  const [currentUsername, setCurrentUsername] = useState<string>(displayName);
   const [loading, setLoading] = useState(true);
   const [copiedField, setCopiedField] = useState<string | null>(null);
 
@@ -195,15 +198,20 @@ export function UserCard({
         // ignore
       }
 
-      // Fetch profile picture from ivr.fi
+      // Fetch current username and profile picture from ivr.fi
       try {
         const profileRes = await fetch(
           `https://api.ivr.fi/v2/twitch/user?id=${userId}`,
         );
         if (profileRes.ok && !cancelled) {
           const data = await profileRes.json();
-          if (data && data.length > 0 && data[0].logo) {
-            setProfilePic(data[0].logo);
+          if (data && data.length > 0) {
+            if (data[0].logo) {
+              setProfilePic(data[0].logo);
+            }
+            if (data[0].login) {
+              setCurrentUsername(data[0].displayName || data[0].login);
+            }
           }
         }
       } catch {
@@ -219,33 +227,31 @@ export function UserCard({
     };
   }, [userId, state.apiBaseUrl]);
 
-  // Position the card near the anchor element
+  // Position the card near the click coordinates
   const [position, setPosition] = useState<{ top: number; left: number }>({
     top: 0,
     left: 0,
   });
 
   useEffect(() => {
-    if (anchorEl) {
-      const rect = anchorEl.getBoundingClientRect();
-      const cardWidth = 320;
-      const cardHeight = 400;
+    const cardWidth = 320;
+    const cardHeight = 420;
 
-      let top = rect.bottom + 4;
-      let left = rect.left;
+    let top = clickY + 8;
+    let left = clickX;
 
-      // Keep card within viewport
-      if (left + cardWidth > window.innerWidth) {
-        left = window.innerWidth - cardWidth - 16;
-      }
-      if (top + cardHeight > window.innerHeight) {
-        top = rect.top - cardHeight - 4;
-        if (top < 0) top = 8;
-      }
-
-      setPosition({ top, left });
+    // Keep card within viewport
+    if (left + cardWidth > window.innerWidth) {
+      left = window.innerWidth - cardWidth - 16;
     }
-  }, [anchorEl]);
+    if (left < 8) left = 8;
+    if (top + cardHeight > window.innerHeight) {
+      top = clickY - cardHeight - 8;
+      if (top < 0) top = 8;
+    }
+
+    setPosition({ top, left });
+  }, [clickX, clickY]);
 
   const copyToClipboard = (text: string, field: string) => {
     navigator.clipboard.writeText(text).then(() => {
@@ -256,7 +262,8 @@ export function UserCard({
 
   const handleViewGlobalMessages = () => {
     onClose();
-    setCurrents(null, displayName.toLowerCase(), null);
+    // Use the current username from the Twitch API for the search
+    setCurrents(null, currentUsername.toLowerCase(), null);
   };
 
   return (
@@ -268,12 +275,19 @@ export function UserCard({
       >
         <div className="card-header">
           {profilePic ? (
-            <img className="profile-pic" src={profilePic} alt={displayName} />
+            <img
+              className="profile-pic"
+              src={profilePic}
+              alt={currentUsername}
+            />
           ) : (
             <div className="profile-pic" />
           )}
           <div>
-            <div className="card-name">{displayName}</div>
+            <div className="card-name">{currentUsername}</div>
+            {currentUsername.toLowerCase() !== displayName.toLowerCase() && (
+              <div className="card-subname">Message as: {displayName}</div>
+            )}
           </div>
         </div>
 
@@ -292,14 +306,14 @@ export function UserCard({
 
         <div className="card-row">
           <div>
-            <div className="card-label">Display Name</div>
-            <div className="card-value">{displayName}</div>
+            <div className="card-label">Current Username</div>
+            <div className="card-value">{currentUsername}</div>
           </div>
           <button
             className="copy-btn"
-            onClick={() => copyToClipboard(displayName, "displayName")}
+            onClick={() => copyToClipboard(currentUsername, "currentName")}
           >
-            {copiedField === "displayName" ? "Copied!" : "Copy"}
+            {copiedField === "currentName" ? "Copied!" : "Copy"}
           </button>
         </div>
 

@@ -1,4 +1,5 @@
 import React, { useContext, useEffect, useState, useRef } from "react";
+import ReactDOM from "react-dom";
 import styled from "styled-components";
 import dayjs from "dayjs";
 import { store } from "../store";
@@ -266,7 +267,7 @@ export function UserCard({
     setCurrents(null, currentUsername.toLowerCase(), null);
   };
 
-  return (
+  return ReactDOM.createPortal(
     <>
       <Overlay onClick={onClose} />
       <CardContainer
@@ -379,6 +380,7 @@ export function UserCard({
           View Global Messages
         </button>
       </CardContainer>
-    </>
+    </>,
+    document.body,
   );
 }

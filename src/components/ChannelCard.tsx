@@ -1,4 +1,5 @@
 import React, { useContext, useEffect, useState, useRef } from "react";
+import ReactDOM from "react-dom";
 import styled from "styled-components";
 import { store } from "../store";
 
@@ -186,7 +187,7 @@ export function ChannelCard({
     setCurrents(channelName, null, null);
   };
 
-  return (
+  return ReactDOM.createPortal(
     <>
       <Overlay onClick={onClose} />
       <CardContainer
@@ -234,6 +235,7 @@ export function ChannelCard({
           Open Channel Logs
         </button>
       </CardContainer>
-    </>
+    </>,
+    document.body,
   );
 }

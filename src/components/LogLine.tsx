@@ -181,6 +181,7 @@ export function LogLine({ message }: { message: LogMessage }) {
   const { state } = useContext(store);
   const channels = useChannels();
   const isGlobal = !state.currentChannel;
+  const hasChannelAndUser = !!state.currentChannel && !!state.currentUsername;
   const showChannel = isGlobal && message.tags["room-id"];
 
   const channelInfo = showChannel
@@ -205,6 +206,11 @@ export function LogLine({ message }: { message: LogMessage }) {
       {state.settings.showTimestamp.value &&
         (isGlobal && message.tags["room-id"] ? (
           <ClickableTimestamp message={message} channelName={channelName} />
+        ) : hasChannelAndUser ? (
+          <ClickableTimestamp
+            message={message}
+            channelName={state.currentChannel!}
+          />
         ) : (
           <span className="timestamp">
             {dayjs(message.timestamp).format("YYYY-MM-DD HH:mm:ss")}
@@ -241,6 +247,7 @@ export function LogLineWithEmotes({
   const { state } = useContext(store);
   const channels = useChannels();
   const isGlobal = !state.currentChannel;
+  const hasChannelAndUser = !!state.currentChannel && !!state.currentUsername;
   const thirdPartyEmotes = useThirdPartyEmotes(message.tags["room-id"]);
 
   const channelInfo = showChannel
@@ -256,6 +263,11 @@ export function LogLineWithEmotes({
       {state.settings.showTimestamp.value &&
         (isGlobal && message.tags["room-id"] ? (
           <ClickableTimestamp message={message} channelName={channelName} />
+        ) : hasChannelAndUser ? (
+          <ClickableTimestamp
+            message={message}
+            channelName={state.currentChannel!}
+          />
         ) : (
           <span className="timestamp">
             {dayjs(message.timestamp).format("YYYY-MM-DD HH:mm:ss")}

@@ -13,8 +13,8 @@ export function useAvailableLogs(
   const { state, setState } = useContext(store);
 
   // When time range is active, return a synthetic entry so LogContainer renders
-  if (state.timeFrom && state.timeTo) {
-    const fromDate = new Date(state.timeFrom);
+  if (state.timeFrom || state.timeTo) {
+    const fromDate = new Date(state.timeFrom || state.timeTo!);
     const syntheticEntry = {
       year: fromDate.getFullYear().toString(),
       month: (fromDate.getMonth() + 1).toString(),

@@ -32,7 +32,7 @@ export function useLog(
 
         let queryUrlStr = `${state.apiBaseUrl}`;
 
-        const hasTimeRange = state.timeFrom && state.timeTo;
+        const hasTimeRange = state.timeFrom || state.timeTo;
 
         if (channel && !username) {
           const ch = channelIsId ? getUserId(channel) : channel;

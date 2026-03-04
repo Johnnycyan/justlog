@@ -68,13 +68,9 @@ export function Filters() {
       const timeFrom = fromValue ? new Date(fromValue).toISOString() : null;
       const timeTo = toValue ? new Date(toValue).toISOString() : null;
 
-      queryClient.invalidateQueries([
-        "log",
-        { channel: channel?.toLowerCase(), username: username?.toLowerCase() },
-      ]);
-      if (search) {
-        queryClient.invalidateQueries(["search", { query: search }]);
-      }
+      queryClient.invalidateQueries(["log"]);
+      queryClient.invalidateQueries(["search"]);
+      queryClient.invalidateQueries(["availableLogs"]);
 
       setCurrents(channel, username, search, timeFrom, timeTo);
     }

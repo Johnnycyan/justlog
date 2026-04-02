@@ -9,6 +9,7 @@ import {
   MenuItem,
   Select,
   TextField,
+  Typography,
 } from "@mui/material";
 import { Download } from "@mui/icons-material";
 import React, { useContext, useState } from "react";
@@ -17,6 +18,7 @@ import { getUserId, isUserId } from "../services/isUserId";
 import { store } from "../store";
 
 type ExportFormat = "txt" | "json" | "ndjson" | "yaml";
+type Verbosity = "minimal" | "basic" | "full";
 
 const StyledDialogContent = styled(DialogContent)`
   display: flex;
@@ -24,6 +26,12 @@ const StyledDialogContent = styled(DialogContent)`
   gap: 16px;
   min-width: 360px;
   padding-top: 16px !important;
+`;
+
+const VerbosityHint = styled(Typography)`
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 12px !important;
+  margin-top: -8px !important;
 `;
 
 function toYaml(obj: unknown, indent = 0): string {
@@ -79,6 +87,7 @@ function buildExportUrl(
   from: string,
   to: string,
   format: ExportFormat,
+  verbosity: Verbosity,
 ): string {
   if (!channel && !username) return "";
 
@@ -104,10 +113,15 @@ function buildExportUrl(
   url.searchParams.set("from", new Date(from).toISOString());
   url.searchParams.set("to", new Date(to).toISOString());
 
-  if (format === "json" || format === "yaml") {
-    url.searchParams.set("json", "1");
+  if (format === "txt") {
+    // plain text, no json param needed
   } else if (format === "ndjson") {
     url.searchParams.set("ndjson", "1");
+  } else if (verbosity === "full") {
+    url.searchParams.set("json", "1");
+  } else {
+    // basic and minimal both fetch jsonBasic; minimal is trimmed client-side
+    url.searchParams.set("jsonBasic", "1");
   }
 
   return url.toString();
@@ -124,6 +138,22 @@ function triggerDownload(content: string, filename: string, mime: string) {
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
 }
+
+function stripToMinimal(
+  messages: Array<Record<string, unknown>>,
+): Array<Record<string, unknown>> {
+  return messages.map((msg) => ({
+    timestamp: msg.timestamp,
+    displayName: msg.displayName,
+    text: msg.text,
+  }));
+}
+
+const VERBOSITY_HINTS: Record<Verbosity, string> = {
+  minimal: "Timestamp, display name, and message text only",
+  basic: "Text, display name, timestamp, message ID, and tags",
+  full: "Everything including raw IRC, username, channel, and message type",
+};
 
 function getDefaultFrom(): string {
   const d = new Date();
@@ -157,6 +187,7 @@ export function ExportDialog() {
   const { state } = useContext(store);
   const [open, setOpen] = useState(false);
   const [format, setFormat] = useState<ExportFormat>("txt");
+  const [verbosity, setVerbosity] = useState<Verbosity>("basic");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [exporting, setExporting] = useState(false);
@@ -168,6 +199,7 @@ export function ExportDialog() {
   };
 
   const hasTarget = !!(state.currentChannel || state.currentUsername);
+  const showVerbosity = format !== "txt";
 
   const handleExport = async () => {
     if (!from || !to) return;
@@ -179,15 +211,16 @@ export function ExportDialog() {
       from,
       to,
       format,
+      verbosity,
     );
     if (!url) return;
 
     const ch = state.currentChannel || "all";
     const us = state.currentUsername ? `_${state.currentUsername}` : "";
     const dateTag = `${from.slice(0, 10)}_to_${to.slice(0, 10)}`;
+    const baseFilename = `logs_${ch}${us}_${dateTag}`;
 
-    if (format === "txt" || format === "ndjson") {
-      // Direct download via new tab
+    if (format === "txt") {
       window.open(url, "_blank", "noopener,noreferrer");
       setOpen(false);
       return;
@@ -197,23 +230,61 @@ export function ExportDialog() {
     try {
       const response = await fetch(url);
       if (!response.ok) throw new Error(response.statusText);
-      const data = await response.json();
 
-      let content: string;
-      let ext: string;
-      let mime: string;
+      if (format === "ndjson") {
+        const text = await response.text();
+        let content = text;
 
-      if (format === "yaml") {
-        content = toYaml(data).trimStart();
-        ext = "yaml";
-        mime = "text/yaml";
+        if (verbosity === "minimal" || verbosity === "basic") {
+          // NDJSON: each line is a JSON object, filter fields client-side
+          const lines = text.trim().split("\n").filter(Boolean);
+          content =
+            lines
+              .map((line) => {
+                const obj = JSON.parse(line);
+                if (verbosity === "minimal") {
+                  return JSON.stringify({
+                    timestamp: obj.timestamp,
+                    displayName: obj.displayName,
+                    text: obj.text,
+                  });
+                }
+                return line;
+              })
+              .join("\n") + "\n";
+        }
+
+        triggerDownload(
+          content,
+          `${baseFilename}.ndjson`,
+          "application/x-ndjson",
+        );
       } else {
-        content = JSON.stringify(data, null, 2);
-        ext = "json";
-        mime = "application/json";
-      }
+        const data = await response.json();
+        let messages = data.messages ?? data;
 
-      triggerDownload(content, `logs_${ch}${us}_${dateTag}.${ext}`, mime);
+        if (verbosity === "minimal" && Array.isArray(messages)) {
+          messages = stripToMinimal(messages);
+        }
+
+        const exportData = data.messages ? { messages } : messages;
+
+        let content: string;
+        let ext: string;
+        let mime: string;
+
+        if (format === "yaml") {
+          content = toYaml(exportData).trimStart();
+          ext = "yaml";
+          mime = "text/yaml";
+        } else {
+          content = JSON.stringify(exportData, null, 2);
+          ext = "json";
+          mime = "application/json";
+        }
+
+        triggerDownload(content, `${baseFilename}.${ext}`, mime);
+      }
     } catch (err) {
       console.error("Export failed:", err);
     } finally {
@@ -266,6 +337,25 @@ export function ExportDialog() {
               <MenuItem value="yaml">YAML (.yaml)</MenuItem>
             </Select>
           </FormControl>
+          {showVerbosity && (
+            <>
+              <FormControl fullWidth>
+                <InputLabel>Detail Level</InputLabel>
+                <Select
+                  value={verbosity}
+                  label="Detail Level"
+                  onChange={(e) => setVerbosity(e.target.value as Verbosity)}
+                >
+                  <MenuItem value="minimal">Minimal</MenuItem>
+                  <MenuItem value="basic">Basic</MenuItem>
+                  <MenuItem value="full">Full</MenuItem>
+                </Select>
+              </FormControl>
+              <VerbosityHint variant="body2">
+                {VERBOSITY_HINTS[verbosity]}
+              </VerbosityHint>
+            </>
+          )}
         </StyledDialogContent>
         <DialogActions>
           <Button onClick={() => setOpen(false)}>Cancel</Button>

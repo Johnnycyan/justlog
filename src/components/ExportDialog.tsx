@@ -117,11 +117,9 @@ function buildExportUrl(
     // plain text, no json param needed
   } else if (format === "ndjson") {
     url.searchParams.set("ndjson", "1");
-  } else if (verbosity === "full") {
-    url.searchParams.set("json", "1");
   } else {
-    // basic and minimal both fetch jsonBasic; minimal is trimmed client-side
-    url.searchParams.set("jsonBasic", "1");
+    // all verbosity levels use full json so channel field is available
+    url.searchParams.set("json", "1");
   }
 
   return url.toString();
@@ -144,14 +142,28 @@ function stripToMinimal(
 ): Array<Record<string, unknown>> {
   return messages.map((msg) => ({
     timestamp: msg.timestamp,
+    channel: msg.channel,
     displayName: msg.displayName,
     text: msg.text,
   }));
 }
 
+function stripToBasic(
+  messages: Array<Record<string, unknown>>,
+): Array<Record<string, unknown>> {
+  return messages.map((msg) => ({
+    text: msg.text,
+    channel: msg.channel,
+    displayName: msg.displayName,
+    timestamp: msg.timestamp,
+    id: msg.id,
+    tags: msg.tags,
+  }));
+}
+
 const VERBOSITY_HINTS: Record<Verbosity, string> = {
-  minimal: "Timestamp, display name, and message text only",
-  basic: "Text, display name, timestamp, message ID, and tags",
+  minimal: "Timestamp, channel, display name, and message text only",
+  basic: "Text, channel, display name, timestamp, message ID, and tags",
   full: "Everything including raw IRC, username, channel, and message type",
 };
 
@@ -245,8 +257,19 @@ export function ExportDialog() {
                 if (verbosity === "minimal") {
                   return JSON.stringify({
                     timestamp: obj.timestamp,
+                    channel: obj.channel,
                     displayName: obj.displayName,
                     text: obj.text,
+                  });
+                }
+                if (verbosity === "basic") {
+                  return JSON.stringify({
+                    text: obj.text,
+                    channel: obj.channel,
+                    displayName: obj.displayName,
+                    timestamp: obj.timestamp,
+                    id: obj.id,
+                    tags: obj.tags,
                   });
                 }
                 return line;
@@ -265,6 +288,8 @@ export function ExportDialog() {
 
         if (verbosity === "minimal" && Array.isArray(messages)) {
           messages = stripToMinimal(messages);
+        } else if (verbosity === "basic" && Array.isArray(messages)) {
+          messages = stripToBasic(messages);
         }
 
         const exportData = data.messages ? { messages } : messages;

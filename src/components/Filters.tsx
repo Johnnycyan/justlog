@@ -123,7 +123,7 @@ export function Filters() {
         />
         <TextField
           name="search"
-          label="Global search"
+          label="Search"
           variant="filled"
           autoComplete="off"
           defaultValue={state.currentSearchQuery}

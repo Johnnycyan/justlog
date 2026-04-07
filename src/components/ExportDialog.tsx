@@ -17,7 +17,7 @@ import styled from "styled-components";
 import { getUserId, isUserId } from "../services/isUserId";
 import { store } from "../store";
 
-type ExportFormat = "txt" | "json" | "ndjson" | "yaml";
+type ExportFormat = "txt" | "json" | "ndjson" | "yaml" | "html";
 type Verbosity = "minimal" | "basic" | "full";
 
 const StyledDialogContent = styled(DialogContent)`
@@ -87,7 +87,6 @@ function buildExportUrl(
   from: string,
   to: string,
   format: ExportFormat,
-  verbosity: Verbosity,
 ): string {
   if (!channel && !username) return "";
 
@@ -118,10 +117,23 @@ function buildExportUrl(
   } else if (format === "ndjson") {
     url.searchParams.set("ndjson", "1");
   } else {
-    // all verbosity levels use full json so channel field is available
     url.searchParams.set("json", "1");
   }
 
+  return url.toString();
+}
+
+function buildSearchExportUrl(
+  apiBaseUrl: string,
+  query: string,
+  from: string,
+  to: string,
+): string {
+  const url = new URL(`${apiBaseUrl}/search`);
+  url.searchParams.set("q", query);
+  url.searchParams.set("json", "1");
+  url.searchParams.set("from", new Date(from).toISOString());
+  url.searchParams.set("to", new Date(to).toISOString());
   return url.toString();
 }
 
@@ -195,6 +207,195 @@ function isoFromLocal(val: string | null): string {
   }
 }
 
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+interface ParsedEmote {
+  id: string;
+  startIndex: number;
+  endIndex: number;
+}
+
+function parseEmotesFromTag(emotesTag: string | undefined): ParsedEmote[] {
+  if (!emotesTag) return [];
+  const parsed: ParsedEmote[] = [];
+  const groups = emotesTag.split("/");
+  for (const group of groups) {
+    const [id, positions] = group.split(":");
+    if (!positions) continue;
+    for (const pos of positions.split(",")) {
+      const [start, end] = pos.split("-");
+      parsed.push({
+        id,
+        startIndex: Number(start),
+        endIndex: Number(end) + 1,
+      });
+    }
+  }
+  parsed.sort((a, b) => a.startIndex - b.startIndex);
+  return parsed;
+}
+
+function renderMessageHtml(text: string, emotes: ParsedEmote[]): string {
+  if (emotes.length === 0) return escapeHtml(text);
+
+  // Use Array.from to handle multi-byte characters correctly
+  const chars = Array.from(text);
+  let result = "";
+  let charIndex = 0;
+
+  for (const emote of emotes) {
+    // Add text before this emote
+    if (charIndex < emote.startIndex) {
+      result += escapeHtml(chars.slice(charIndex, emote.startIndex).join(""));
+    }
+    const emoteText = chars.slice(emote.startIndex, emote.endIndex).join("");
+    result += `<img class="emote" src="https://static-cdn.jtvnw.net/emoticons/v2/${escapeHtml(emote.id)}/default/dark/1.0" alt="${escapeHtml(emoteText)}" title="${escapeHtml(emoteText)}">`;
+    charIndex = emote.endIndex;
+  }
+
+  // Add remaining text
+  if (charIndex < chars.length) {
+    result += escapeHtml(chars.slice(charIndex).join(""));
+  }
+
+  return result;
+}
+
+function formatTimestamp(ts: string): string {
+  try {
+    const d = new Date(ts);
+    const pad = (n: number) => n.toString().padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+  } catch {
+    return ts;
+  }
+}
+
+function buildThemedHtml(
+  messages: Array<Record<string, unknown>>,
+  title: string,
+): string {
+  const lines = messages
+    .map((msg) => {
+      const tags = (msg.tags as Record<string, string>) || {};
+      const color = tags["color"] || "#FFFFFF";
+      const displayName = escapeHtml(String(msg.displayName || ""));
+      const timestamp = formatTimestamp(String(msg.timestamp || ""));
+      const channel = msg.channel ? escapeHtml(String(msg.channel)) : null;
+
+      const emotes = parseEmotesFromTag(tags["emotes"]);
+      const messageHtml = renderMessageHtml(String(msg.text || ""), emotes);
+
+      const channelHtml = channel
+        ? `<span class="channel">#${channel}</span> `
+        : "";
+
+      return `<div class="msg"><span class="ts">${escapeHtml(timestamp)}</span> ${channelHtml}<span class="user" style="color:${escapeHtml(color)}">${displayName}</span><span class="sep">:</span> <span class="text">${messageHtml}</span></div>`;
+    })
+    .join("\n");
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>${escapeHtml(title)}</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0e0e10;
+    color: #efeff1;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-size: 13px;
+    line-height: 1.5;
+    padding: 0;
+  }
+  .header {
+    background: #18181b;
+    border-bottom: 1px solid #2f2f35;
+    padding: 16px 24px;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+  .header h1 {
+    font-size: 18px;
+    font-weight: 600;
+    color: #efeff1;
+  }
+  .header .meta {
+    font-size: 12px;
+    color: #adadb8;
+    margin-top: 4px;
+  }
+  .messages {
+    padding: 8px 16px;
+  }
+  .msg {
+    padding: 2px 8px;
+    border-radius: 4px;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+  }
+  .msg:hover {
+    background: #26262c;
+  }
+  .ts {
+    color: #7a7a85;
+    font-family: 'Cascadia Code', 'Consolas', monospace;
+    font-size: 12px;
+    user-select: none;
+    margin-right: 6px;
+  }
+  .channel {
+    color: #bf94ff;
+    font-weight: 600;
+    margin-right: 4px;
+  }
+  .user {
+    font-weight: 700;
+    cursor: default;
+  }
+  .sep {
+    color: #7a7a85;
+    margin-right: 4px;
+  }
+  .text {
+    color: #efeff1;
+  }
+  .text a {
+    color: #bf94ff;
+    text-decoration: none;
+  }
+  .text a:hover {
+    text-decoration: underline;
+  }
+  img.emote {
+    max-height: 20px;
+    width: auto;
+    margin: 0 2px;
+    vertical-align: middle;
+  }
+</style>
+</head>
+<body>
+<div class="header">
+  <h1>${escapeHtml(title)}</h1>
+  <div class="meta">${messages.length.toLocaleString()} messages &middot; Exported ${escapeHtml(new Date().toISOString())}</div>
+</div>
+<div class="messages">
+${lines}
+</div>
+</body>
+</html>`;
+}
+
 export function ExportDialog() {
   const { state } = useContext(store);
   const [open, setOpen] = useState(false);
@@ -210,12 +411,156 @@ export function ExportDialog() {
     setOpen(true);
   };
 
-  const hasTarget = !!(state.currentChannel || state.currentUsername);
-  const showVerbosity = format !== "txt";
+  const hasTarget = !!(
+    state.currentChannel ||
+    state.currentUsername ||
+    state.currentSearchQuery
+  );
+  const isSearchExport =
+    !!state.currentSearchQuery &&
+    !state.currentChannel &&
+    !state.currentUsername;
+  const showVerbosity = format !== "txt" && format !== "html";
 
   const handleExport = async () => {
     if (!from || !to) return;
 
+    const ch = state.currentChannel || "all";
+    const us = state.currentUsername ? `_${state.currentUsername}` : "";
+    const sq = state.currentSearchQuery
+      ? `_search_${state.currentSearchQuery.replace(/[^a-zA-Z0-9]/g, "_").slice(0, 30)}`
+      : "";
+    const dateTag = `${from.slice(0, 10)}_to_${to.slice(0, 10)}`;
+    const baseFilename = `logs_${ch}${us}${sq}_${dateTag}`;
+
+    // HTML export always fetches JSON data and renders client-side
+    if (format === "html") {
+      setExporting(true);
+      try {
+        let url: string;
+        if (isSearchExport) {
+          url = buildSearchExportUrl(
+            state.apiBaseUrl,
+            state.currentSearchQuery!,
+            from,
+            to,
+          );
+        } else {
+          url = buildExportUrl(
+            state.apiBaseUrl,
+            state.currentChannel,
+            state.currentUsername,
+            from,
+            to,
+            "json",
+          );
+        }
+        if (!url) return;
+
+        const response = await fetch(url);
+        if (!response.ok) throw new Error(response.statusText);
+        const data = await response.json();
+        const messages = data.messages ?? data;
+
+        const titleParts = [];
+        if (state.currentChannel) titleParts.push(`#${state.currentChannel}`);
+        if (state.currentUsername) titleParts.push(`@${state.currentUsername}`);
+        if (state.currentSearchQuery)
+          titleParts.push(`Search: "${state.currentSearchQuery}"`);
+        const title = titleParts.join(" / ") || "Log Export";
+
+        const html = buildThemedHtml(messages, title);
+        triggerDownload(html, `${baseFilename}.html`, "text/html");
+      } catch (err) {
+        console.error("Export failed:", err);
+      } finally {
+        setExporting(false);
+        setOpen(false);
+      }
+      return;
+    }
+
+    // Search-based export (non-HTML)
+    if (isSearchExport) {
+      const url = buildSearchExportUrl(
+        state.apiBaseUrl,
+        state.currentSearchQuery!,
+        from,
+        to,
+      );
+
+      if (format === "txt") {
+        // For search TXT, fetch JSON data and format as plain text
+        setExporting(true);
+        try {
+          const response = await fetch(url);
+          if (!response.ok) throw new Error(response.statusText);
+          const data = await response.json();
+          const messages: Array<Record<string, unknown>> =
+            data.messages ?? data;
+          const content = messages
+            .map(
+              (msg) =>
+                `[${msg.timestamp}] ${msg.channel ? `#${msg.channel} ` : ""}${msg.displayName}: ${msg.text}`,
+            )
+            .join("\n");
+          triggerDownload(content, `${baseFilename}.txt`, "text/plain");
+        } catch (err) {
+          console.error("Export failed:", err);
+        } finally {
+          setExporting(false);
+          setOpen(false);
+        }
+        return;
+      }
+
+      // JSON-based search export
+      setExporting(true);
+      try {
+        const response = await fetch(url);
+        if (!response.ok) throw new Error(response.statusText);
+        const data = await response.json();
+        let messages = data.messages ?? data;
+
+        if (verbosity === "minimal" && Array.isArray(messages)) {
+          messages = stripToMinimal(messages);
+        } else if (verbosity === "basic" && Array.isArray(messages)) {
+          messages = stripToBasic(messages);
+        }
+
+        const exportData = data.messages ? { messages } : messages;
+        let content: string;
+        let ext: string;
+        let mime: string;
+
+        if (format === "ndjson") {
+          content =
+            (Array.isArray(messages) ? messages : [messages])
+              .map((m: unknown) => JSON.stringify(m))
+              .join("\n") + "\n";
+          ext = "ndjson";
+          mime = "application/x-ndjson";
+        } else if (format === "yaml") {
+          content = toYaml(exportData).trimStart();
+          ext = "yaml";
+          mime = "text/yaml";
+        } else {
+          content = JSON.stringify(exportData, null, 2);
+          ext = "json";
+          mime = "application/json";
+        }
+
+        triggerDownload(content, `${baseFilename}.${ext}`, mime);
+      } catch (err) {
+        console.error("Export failed:", err);
+      } finally {
+        setExporting(false);
+        setOpen(false);
+      }
+      return;
+    }
+
+    // Channel/user export (original behavior)
     const url = buildExportUrl(
       state.apiBaseUrl,
       state.currentChannel,
@@ -223,14 +568,8 @@ export function ExportDialog() {
       from,
       to,
       format,
-      verbosity,
     );
     if (!url) return;
-
-    const ch = state.currentChannel || "all";
-    const us = state.currentUsername ? `_${state.currentUsername}` : "";
-    const dateTag = `${from.slice(0, 10)}_to_${to.slice(0, 10)}`;
-    const baseFilename = `logs_${ch}${us}_${dateTag}`;
 
     if (format === "txt") {
       window.open(url, "_blank", "noopener,noreferrer");
@@ -248,7 +587,6 @@ export function ExportDialog() {
         let content = text;
 
         if (verbosity === "minimal" || verbosity === "basic") {
-          // NDJSON: each line is a JSON object, filter fields client-side
           const lines = text.trim().split("\n").filter(Boolean);
           content =
             lines
@@ -333,6 +671,12 @@ export function ExportDialog() {
       <Dialog open={open} onClose={() => setOpen(false)}>
         <DialogTitle>Export Logs</DialogTitle>
         <StyledDialogContent>
+          {isSearchExport && (
+            <Typography variant="body2" sx={{ color: "rgba(255,255,255,0.6)" }}>
+              Exporting search results for &quot;{state.currentSearchQuery}
+              &quot;
+            </Typography>
+          )}
           <TextField
             label="From"
             type="datetime-local"
@@ -357,11 +701,18 @@ export function ExportDialog() {
               onChange={(e) => setFormat(e.target.value as ExportFormat)}
             >
               <MenuItem value="txt">Plain Text (.txt)</MenuItem>
+              <MenuItem value="html">Themed HTML (.html)</MenuItem>
               <MenuItem value="json">JSON (.json)</MenuItem>
               <MenuItem value="ndjson">NDJSON (.ndjson)</MenuItem>
               <MenuItem value="yaml">YAML (.yaml)</MenuItem>
             </Select>
           </FormControl>
+          {format === "html" && (
+            <VerbosityHint variant="body2">
+              Self-contained HTML file with Twitch-themed styling, emotes, and
+              user colors
+            </VerbosityHint>
+          )}
           {showVerbosity && (
             <>
               <FormControl fullWidth>

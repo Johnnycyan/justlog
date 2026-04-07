@@ -5,11 +5,28 @@ import { LogMessage, UserLogResponse } from "../types/log";
 import runes from "runes";
 import { Emote } from "../types/log";
 
-export function useGlobalSearch(query: string): [Array<LogMessage>, boolean] {
+export interface GlobalSearchFilters {
+  channelId?: string;
+  userId?: string;
+}
+
+export function useGlobalSearch(
+  query: string,
+  filters?: GlobalSearchFilters,
+): [Array<LogMessage>, boolean] {
   const { state } = useContext(store);
 
   const { data, isFetching } = useQuery<Array<LogMessage>>(
-    ["search", { query: query, from: state.timeFrom, to: state.timeTo }],
+    [
+      "search",
+      {
+        query: query,
+        from: state.timeFrom,
+        to: state.timeTo,
+        channelId: filters?.channelId,
+        userId: filters?.userId,
+      },
+    ],
     () => {
       if (!query) {
         return Promise.resolve([]);
@@ -43,6 +60,18 @@ export function useGlobalSearch(query: string): [Array<LogMessage>, boolean] {
           const messages: Array<LogMessage> = [];
 
           for (const msg of data.messages) {
+            // Filter by channel if specified
+            if (
+              filters?.channelId &&
+              msg.tags["room-id"] !== filters.channelId
+            ) {
+              continue;
+            }
+            // Filter by user if specified
+            if (filters?.userId && msg.tags["user-id"] !== filters.userId) {
+              continue;
+            }
+
             messages.push({
               ...msg,
               timestamp: new Date(msg.timestamp),

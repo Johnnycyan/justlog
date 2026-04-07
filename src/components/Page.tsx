@@ -11,14 +11,13 @@ const PageContainer = styled.div``;
 export function Page() {
   const { state } = useContext(store);
 
-  const isGlobalSearch =
-    state.currentSearchQuery && !state.currentChannel && !state.currentUsername;
+  const hasSearchQuery = !!state.currentSearchQuery;
 
   return (
     <PageContainer>
       <Filters />
       {state.showOptout && <OptoutPanel />}
-      {isGlobalSearch ? (
+      {hasSearchQuery ? (
         <GlobalSearchContainer query={state.currentSearchQuery!} />
       ) : (
         <LogContainer />

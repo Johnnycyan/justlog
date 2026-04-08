@@ -241,27 +241,214 @@ function parseEmotesFromTag(emotesTag: string | undefined): ParsedEmote[] {
   return parsed;
 }
 
-function renderMessageHtml(text: string, emotes: ParsedEmote[]): string {
-  if (emotes.length === 0) return escapeHtml(text);
+interface ThirdPartyEmoteEntry {
+  code: string;
+  url: string;
+}
 
+async function fetchThirdPartyEmotes(
+  channelIds: string[],
+): Promise<Map<string, ThirdPartyEmoteEntry[]>> {
+  // Map of channelId -> emotes ("__global__" for global emotes)
+  const result = new Map<string, ThirdPartyEmoteEntry[]>();
+
+  const safeFetch = async (url: string) => {
+    try {
+      const res = await fetch(url);
+      if (!res.ok) return null;
+      return res.json();
+    } catch {
+      return null;
+    }
+  };
+
+  // Fetch global emotes
+  const [bttvGlobal, ffzGlobal, stvGlobal] = await Promise.all([
+    safeFetch("https://api.betterttv.net/3/cached/emotes/global"),
+    safeFetch("https://api.frankerfacez.com/v1/set/global"),
+    safeFetch("https://7tv.io/v3/emote-sets/global"),
+  ]);
+
+  const globalEmotes: ThirdPartyEmoteEntry[] = [];
+
+  if (Array.isArray(bttvGlobal)) {
+    for (const e of bttvGlobal) {
+      globalEmotes.push({
+        code: e.code,
+        url: `https://cdn.betterttv.net/emote/${e.id}/1x`,
+      });
+    }
+  }
+
+  if (ffzGlobal?.sets) {
+    for (const set of Object.values(ffzGlobal.sets) as Array<{
+      emoticons: Array<{ name: string; urls: Record<string, string> }>;
+    }>) {
+      for (const e of set.emoticons) {
+        globalEmotes.push({ code: e.name, url: e.urls["1"] });
+      }
+    }
+  }
+
+  if (stvGlobal?.emotes) {
+    for (const e of stvGlobal.emotes as Array<{
+      id: string;
+      name: string;
+      data: {
+        host: { url: string; files: Array<{ name: string; format: string }> };
+      };
+    }>) {
+      const webp = e.data.host.files.filter((f) => f.format === "WEBP");
+      if (webp.length > 0) {
+        globalEmotes.push({
+          code: e.name,
+          url: `${e.data.host.url}/${webp[0].name}`,
+        });
+      }
+    }
+  }
+
+  result.set("__global__", globalEmotes);
+
+  // Fetch channel-specific emotes in parallel
+  const uniqueChannelIds = [...new Set(channelIds)];
+  await Promise.all(
+    uniqueChannelIds.map(async (chId) => {
+      const channelEmotes: ThirdPartyEmoteEntry[] = [];
+
+      const [bttvCh, ffzCh, stvCh] = await Promise.all([
+        safeFetch(`https://api.betterttv.net/3/cached/users/twitch/${chId}`),
+        safeFetch(`https://api.frankerfacez.com/v1/room/id/${chId}`),
+        safeFetch(`https://7tv.io/v3/users/twitch/${chId}`),
+      ]);
+
+      if (bttvCh) {
+        for (const e of [
+          ...(bttvCh.channelEmotes ?? []),
+          ...(bttvCh.sharedEmotes ?? []),
+        ]) {
+          channelEmotes.push({
+            code: e.code,
+            url: `https://cdn.betterttv.net/emote/${e.id}/1x`,
+          });
+        }
+      }
+
+      if (ffzCh?.sets) {
+        for (const set of Object.values(ffzCh.sets) as Array<{
+          emoticons: Array<{ name: string; urls: Record<string, string> }>;
+        }>) {
+          for (const e of set.emoticons) {
+            channelEmotes.push({ code: e.name, url: e.urls["1"] });
+          }
+        }
+      }
+
+      if (stvCh?.emote_set?.emotes) {
+        for (const e of stvCh.emote_set.emotes as Array<{
+          id: string;
+          name: string;
+          data: {
+            host: {
+              url: string;
+              files: Array<{ name: string; format: string }>;
+            };
+          };
+        }>) {
+          const webp = e.data.host.files.filter((f) => f.format === "WEBP");
+          if (webp.length > 0) {
+            channelEmotes.push({
+              code: e.name,
+              url: `${e.data.host.url}/${webp[0].name}`,
+            });
+          }
+        }
+      }
+
+      result.set(chId, channelEmotes);
+    }),
+  );
+
+  return result;
+}
+
+function buildThirdPartyLookup(
+  emoteMap: Map<string, ThirdPartyEmoteEntry[]>,
+  channelId: string | undefined,
+): Map<string, string> {
+  // code -> url, channel emotes override global
+  const lookup = new Map<string, string>();
+  const globalEmotes = emoteMap.get("__global__") ?? [];
+  for (const e of globalEmotes) {
+    lookup.set(e.code, e.url);
+  }
+  if (channelId) {
+    const channelEmotes = emoteMap.get(channelId) ?? [];
+    for (const e of channelEmotes) {
+      lookup.set(e.code, e.url);
+    }
+  }
+  return lookup;
+}
+
+function renderMessageHtml(
+  text: string,
+  emotes: ParsedEmote[],
+  thirdPartyLookup: Map<string, string>,
+): string {
   // Use Array.from to handle multi-byte characters correctly
   const chars = Array.from(text);
-  let result = "";
+
+  // First pass: render Twitch native emotes and collect remaining text segments
+  const segments: Array<
+    { type: "html"; html: string } | { type: "text"; text: string }
+  > = [];
   let charIndex = 0;
 
   for (const emote of emotes) {
-    // Add text before this emote
     if (charIndex < emote.startIndex) {
-      result += escapeHtml(chars.slice(charIndex, emote.startIndex).join(""));
+      segments.push({
+        type: "text",
+        text: chars.slice(charIndex, emote.startIndex).join(""),
+      });
     }
     const emoteText = chars.slice(emote.startIndex, emote.endIndex).join("");
-    result += `<img class="emote" src="https://static-cdn.jtvnw.net/emoticons/v2/${escapeHtml(emote.id)}/default/dark/1.0" alt="${escapeHtml(emoteText)}" title="${escapeHtml(emoteText)}">`;
+    segments.push({
+      type: "html",
+      html: `<img class="emote" src="https://static-cdn.jtvnw.net/emoticons/v2/${escapeHtml(emote.id)}/default/dark/1.0" alt="${escapeHtml(emoteText)}" title="${escapeHtml(emoteText)}">`,
+    });
     charIndex = emote.endIndex;
   }
 
-  // Add remaining text
   if (charIndex < chars.length) {
-    result += escapeHtml(chars.slice(charIndex).join(""));
+    segments.push({ type: "text", text: chars.slice(charIndex).join("") });
+  }
+
+  if (segments.length === 0) {
+    segments.push({ type: "text", text });
+  }
+
+  // Second pass: replace third-party emote codes in text segments
+  let result = "";
+  for (const seg of segments) {
+    if (seg.type === "html") {
+      result += seg.html;
+      continue;
+    }
+    // Split text by spaces to find emote codes
+    const words = seg.text.split(" ");
+    for (let i = 0; i < words.length; i++) {
+      const word = words[i];
+      const emoteUrl = thirdPartyLookup.get(word);
+      if (emoteUrl) {
+        result += `<img class="emote" src="${escapeHtml(emoteUrl)}" alt="${escapeHtml(word)}" title="${escapeHtml(word)}">`;
+      } else {
+        result += escapeHtml(word);
+      }
+      if (i < words.length - 1) {
+        result += " ";
+      }
+    }
   }
 
   return result;
@@ -277,10 +464,21 @@ function formatTimestamp(ts: string): string {
   }
 }
 
-function buildThemedHtml(
+async function buildThemedHtml(
   messages: Array<Record<string, unknown>>,
   title: string,
-): string {
+): Promise<string> {
+  // Collect unique channel IDs from messages for third-party emote fetching
+  const channelIds: string[] = [];
+  for (const msg of messages) {
+    const tags = (msg.tags as Record<string, string>) || {};
+    if (tags["room-id"]) {
+      channelIds.push(tags["room-id"]);
+    }
+  }
+
+  const emoteMap = await fetchThirdPartyEmotes(channelIds);
+
   const lines = messages
     .map((msg) => {
       const tags = (msg.tags as Record<string, string>) || {};
@@ -290,7 +488,12 @@ function buildThemedHtml(
       const channel = msg.channel ? escapeHtml(String(msg.channel)) : null;
 
       const emotes = parseEmotesFromTag(tags["emotes"]);
-      const messageHtml = renderMessageHtml(String(msg.text || ""), emotes);
+      const thirdPartyLookup = buildThirdPartyLookup(emoteMap, tags["room-id"]);
+      const messageHtml = renderMessageHtml(
+        String(msg.text || ""),
+        emotes,
+        thirdPartyLookup,
+      );
 
       const channelHtml = channel
         ? `<span class="channel">#${channel}</span> `
@@ -469,7 +672,7 @@ export function ExportDialog() {
           titleParts.push(`Search: "${state.currentSearchQuery}"`);
         const title = titleParts.join(" / ") || "Log Export";
 
-        const html = buildThemedHtml(messages, title);
+        const html = await buildThemedHtml(messages, title);
         triggerDownload(html, `${baseFilename}.html`, "text/html");
       } catch (err) {
         console.error("Export failed:", err);
